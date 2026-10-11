@@ -1,0 +1,77 @@
+name: Validate executable platform
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --require-hashes -r requirements.lock
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check apps/api packages scripts tests
+      - run: pytest -q --junitxml=test-results/pytest.xml
+      - run: pip-audit -r requirements.lock --disable-pip --no-deps
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-test-results
+          path: test-results
+  deployment-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python scripts/init_env.py
+      - run: docker compose config --quiet
+      - run: docker compose up --build --wait --wait-timeout 180
+      - run: pip install -e packages/sdk
+      - name: Run all five workflows over HTTP
+        run: |
+          set -a
+          . ./.env
+          set +a
+          python scripts/demo.py > demo-results.json
+      - run: npm ci --prefix apps/web
+      - run: npm audit --prefix apps/web --omit=dev --audit-level=high
+      - run: cd apps/web && npx playwright install --with-deps chromium
+      - name: Browser workflow tests
+        run: |
+          set -a
+          . ./.env
+          set +a
+          npm run test:e2e --prefix apps/web
+      - name: Persisted state survives restart
+        run: |
+          docker compose restart api
+          for i in $(seq 1 30); do curl -fsS http://localhost:8000/ready && break || sleep 2; done
+          python scripts/check_persistence.py
+      - name: Container logs
+        if: always()
+        run: docker compose logs --no-color > container-logs.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-evidence
+          path: |
+            demo-results.json
+            container-logs.txt
+            apps/web/test-results
+      - run: docker compose down
+        if: always()
