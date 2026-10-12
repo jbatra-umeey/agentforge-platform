@@ -7,7 +7,7 @@ test('evidence → cited knowledge run → artifact',async({page})=>{
  await page.goto('/');await login(page,'operator');
  await page.getByRole('button',{name:'Evidence library'}).click();
  await page.getByRole('button',{name:'Save evidence'}).click();
- await expect(page.getByRole('alert')).toContainText('Evidence saved');
+ await expect(page.locator('.notice[role="alert"]')).toContainText('Evidence saved');
  await page.getByRole('button',{name:'Workbench',exact:false}).click();
  await page.getByRole('button',{name:/Knowledge investigator Search/}).click();
  await page.getByRole('button',{name:/Start workflow/}).click();
@@ -35,5 +35,5 @@ test('mobile layout and accessible sign-in',async({page})=>{
  await expect(page.getByRole('heading',{name:'From intent to verified execution.'})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
  await page.getByLabel('Scoped API key').fill('invalid');await page.getByRole('button',{name:'Connect',exact:true}).click();
- await expect(page.getByRole('alert')).toContainText('Valid bearer credential required');
+ await expect(page.locator('.notice[role="alert"]')).toContainText('Valid bearer credential required');
 });
